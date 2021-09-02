@@ -28,16 +28,19 @@ fun MessageInput(modifier: Modifier = Modifier, onSend: (message: String) -> Uni
         inputValue = ""
     }
 
+    val baseModifier = Modifier.height(46.dp)
+
     Row(modifier) {
         TextField(
-            modifier = Modifier.weight(1f),
+            modifier = baseModifier.weight(1f),
             value = inputValue,
             onValueChange = { inputValue = it },
+            singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions { sendMessage() },
         )
         Button(
-            modifier = Modifier.height(56.dp),
+            modifier = baseModifier,
             onClick = { sendMessage() },
             enabled = inputValue.isNotBlank(),
         ) {
@@ -72,20 +75,20 @@ fun MessagesItem(message: TextMessage, modifier: Modifier = Modifier) {
         User.ADVERSARY -> Color(0xFFFFFFE0)
     }
 
+    val horizontalAlignment = when (message.author) {
+        User.YOU -> Alignment.End
+        else -> Alignment.Start
+    }
+
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalAlignment = when (message.author) {
-            User.YOU -> Alignment.End
-            else -> Alignment.Start
-        },
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = horizontalAlignment
     ) {
-        Card(shape = RoundedCornerShape(5.dp), backgroundColor = backgroundColor, elevation = 5.dp, modifier = modifier) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(20.dp).fillMaxWidth(.6f)) {
+        Card(shape = RoundedCornerShape(5.dp), backgroundColor = backgroundColor, elevation = 5.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(10.dp).fillMaxWidth(.6f)) {
                 Column(Modifier.weight(1.0f)) {
-                    Text("${author}:", fontWeight = FontWeight.Bold, fontSize = .9.em)
-                    Spacer(Modifier.height(5.dp))
+                    Text("${author}:", fontWeight = FontWeight.Bold, fontSize = .8.em, color = Color.Gray)
+                    Spacer(Modifier.height(2.dp))
                     Text(message.content)
                 }
                 Text(message.createdAt.format(formatter), fontSize = .7.em)
@@ -99,7 +102,8 @@ fun MessagesItem(message: TextMessage, modifier: Modifier = Modifier) {
 fun MessagesList(messages: List<TextMessage>, modifier: Modifier = Modifier) {
     Column(modifier.padding(20.dp)) {
         LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
         ) {
             items(messages) { message ->
                 val align = if (message.author == User.YOU) {
