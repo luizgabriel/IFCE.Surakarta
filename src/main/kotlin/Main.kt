@@ -1,61 +1,140 @@
 import androidx.compose.desktop.DesktopMaterialTheme
 import androidx.compose.desktop.ui.tooling.preview.Preview
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.decodeFromString
+import ui.Board
+import ui.Chat
+import ui.EditConnectionInput
+import java.net.ServerSocket
+import java.net.Socket
+import java.util.*
+import kotlin.random.Random
+import kotlinx.serialization.json.*
+import lib.*
 
+@OptIn(ExperimentalSerializationApi::class)
 @Composable
 @Preview
-fun App() {
+fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
     var selectedPiece by remember { mutableStateOf(-1) }
-    val userTurn by remember { mutableStateOf(User.YOU) }
+    val turnUser by remember { mutableStateOf(User.YOU) }
     val messages = remember { mutableStateListOf<TextMessage>() }
+    val serverSocket by remember { mutableStateOf(ServerSocket(serverPort)) }
+    var adversarySocket by remember { mutableStateOf<Optional<Socket>>(Optional.empty()) }
+    val coroutineScope = rememberCoroutineScope()
+
     val boardPieces = remember {
         mutableStateMapOf(
-            0 to User.YOU,
-            1 to User.ADVERSARY,
-            2 to User.YOU,
-            3 to User.ADVERSARY,
-            4 to User.YOU,
-            5 to User.ADVERSARY,
-            6 to User.YOU,
-            7 to User.ADVERSARY,
-            8 to User.YOU,
-            9 to User.ADVERSARY,
+            *createDefaultSurakartaBoard()
         )
     }
 
-    LaunchedEffect(true) {
-        var count = 1
-        while (true) {
-            messages.add(TextMessage("test $count", User.ADVERSARY))
-            count++
-            delay(10000)
+    val onSelectCell = { cell: Int ->
+        if (!boardPieces.contains(cell)) {
+            boardPieces[cell] = User.YOU
+            selectedPiece = -1
+        } else if (boardPieces[cell] == User.YOU) {
+            boardPieces.remove(cell)
+            selectedPiece = cell
         }
     }
 
-    val onSelectCell = { cell: Int ->
-        selectedPiece = cell;
-        if (cell != -1) {
-            boardPieces.remove(selectedPiece)
-            boardPieces[cell] = userTurn
-            selectedPiece = -1
+    val adversaryConnection = {
+        adversarySocket.map { Connection(it.inetAddress.hostAddress, it.port) }
+    }
+
+    val addConnectedMessage = {
+        val adversaryHost = adversaryConnection().map { it.toString() }.orElse("")
+        messages.add(
+            TextMessage(
+                "Conectado com %s".format(adversaryHost), User.SYSTEM
+            )
+        )
+    }
+
+    val onConnectToAdversary = { adversaryHost: Connection ->
+        adversarySocket = Optional.of(Socket(adversaryHost.host, adversaryHost.port))
+        addConnectedMessage()
+        Unit
+    }
+
+    val sendMessageToSocket = { message: SocketMessage ->
+        coroutineScope.launch(Dispatchers.IO) {
+            adversarySocket.ifPresent {
+                Json.encodeToStream(message, it.outputStream)
+            }
         }
     }
+
+    val onSendMessage = { text: String ->
+        val message = TextMessage(text, User.YOU)
+        messages.add(message)
+        sendMessageToSocket(SocketMessage.ofText(text))
+        Unit
+    }
+
+    val onSurrender = {
+        messages.add(TextMessage("Você desistiu...", User.SYSTEM))
+        sendMessageToSocket(SocketMessage.ofSurrender())
+        Unit
+    }
+
+    DisposableEffect(Unit) {
+        messages.add(TextMessage("Aceitando conexões...", User.SYSTEM))
+
+        coroutineScope.launch(Dispatchers.IO) {
+            adversarySocket = Optional.of(serverSocket.accept())
+            addConnectedMessage()
+
+            adversarySocket.ifPresent {
+                val scanner = Scanner(it.inputStream)
+                while (scanner.hasNextLine()) {
+                    val message = Json.decodeFromString<SocketMessage>(scanner.nextLine())
+                    messages.add(
+                        when (message.type) {
+                            SocketMessageType.TEXT -> TextMessage(message.data, author = User.ADVERSARY)
+                            SocketMessageType.SURRENDER -> TextMessage("O seu adversário desistiu da partida.", User.SYSTEM)
+                        }
+                    )
+                }
+            }
+        }
+
+        onDispose {
+            adversarySocket.ifPresent { it.close() }
+        }
+    }
+
+    val isConnected = { adversarySocket.map { it.isConnected }.orElse(false) }
 
     DesktopMaterialTheme {
         Row {
-            Board(pieces = boardPieces, selectedCell = selectedPiece, modifier = Modifier.weight(8 / 12.0f),
-                onCancel = {
-                    selectedPiece = -1
-                },
-                onTapCell = onSelectCell)
-            Chat(messages, modifier = Modifier.weight(4 / 12.0f)) {
-                messages.add(TextMessage(it, User.YOU))
+            Board(
+                pieces = boardPieces,
+                selectedCell = selectedPiece,
+                turnUser = turnUser,
+                modifier = Modifier.weight(8 / 12.0f),
+                onTapCell = onSelectCell
+            )
+            Column(modifier = Modifier.weight(4 / 12.0f)) {
+                EditConnectionInput(
+                    port = serverSocket.localPort,
+                    adversary = adversaryConnection(),
+                    isConnected = isConnected(),
+                    onConnect = onConnectToAdversary,
+                    onSurrender = onSurrender,
+                    modifier = Modifier.height(80.dp)
+                )
+                Chat(messages, enabled = isConnected(), onSend = onSendMessage)
             }
         }
     }

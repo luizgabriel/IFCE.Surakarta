@@ -1,3 +1,5 @@
+package ui
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +21,7 @@ import androidx.compose.ui.res.useResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import lib.User
 import kotlin.math.max
 import kotlin.math.min
 
@@ -26,6 +29,7 @@ private fun toColor(user: User): Color {
     return when (user) {
         User.YOU -> Color.Blue
         User.ADVERSARY -> Color.Red
+        else -> Color.Cyan
     }
 }
 
@@ -43,8 +47,8 @@ private fun isInside(tapPosition: Offset, centerPosition: Offset, radius: Float)
 fun Board(
     pieces: Map<Int, User>,
     selectedCell: Int = -1,
+    turnUser: User = User.YOU,
     modifier: Modifier = Modifier,
-    onCancel: () -> Unit,
     onTapCell: (cell: Int) -> Unit
 ) {
     val boardImage = remember {
@@ -90,26 +94,21 @@ fun Board(
             val cellSpacing = boardSize * .112f
 
             if (selectedCell >= 0) {
-                drawCircle(color = toColor(User.YOU), cellRadius, center = cursorPosition)
+                println("selectedCell: %d, cursorPosition: %s".format(selectedCell, cursorPosition))
+                drawCircle(color = toColor(turnUser), cellRadius, center = cursorPosition)
             }
-
-            var tapped = false;
 
             for (i in 0 until 36) {
                 val piece = pieces[i]
                 val cell = Offset((i % 6).toFloat(), (i / 6).toFloat())
                 val centerPosition = firstPositionOffset + Offset(cell.x * cellSpacing.x, cell.y * cellSpacing.y)
                 if (isInside(tapPosition, centerPosition, cellRadius)) {
-                    tapped = true;
+                    tapPosition = Offset(0f, 0f)
                     onTapCell(i)
                 }
 
                 if (piece != null && i != selectedCell)
                     drawCircle(color = toColor(piece), radius = cellRadius, center = centerPosition)
-            }
-
-            if (!tapped) {
-                onCancel()
             }
         }
     }

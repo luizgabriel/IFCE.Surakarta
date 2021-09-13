@@ -1,5 +1,6 @@
+package ui
+
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -9,18 +10,19 @@ import androidx.compose.material.icons.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.*
 import androidx.compose.ui.text.input.*
 import androidx.compose.ui.unit.*
+import jdk.jfr.Enabled
+import lib.TextMessage
+import lib.User
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun MessageInput(modifier: Modifier = Modifier, onSend: (message: String) -> Unit) {
+fun MessageInput(enabled: Boolean, modifier: Modifier = Modifier, onSend: (message: String) -> Unit) {
     var inputValue by remember { mutableStateOf("") }
 
     fun sendMessage() {
@@ -32,6 +34,7 @@ fun MessageInput(modifier: Modifier = Modifier, onSend: (message: String) -> Uni
 
     Row(modifier) {
         TextField(
+            enabled = enabled,
             modifier = baseModifier.weight(1f),
             value = inputValue,
             onValueChange = { inputValue = it },
@@ -42,7 +45,7 @@ fun MessageInput(modifier: Modifier = Modifier, onSend: (message: String) -> Uni
         Button(
             modifier = baseModifier,
             onClick = { sendMessage() },
-            enabled = inputValue.isNotBlank(),
+            enabled = enabled && inputValue.isNotBlank(),
         ) {
             Icon(
                 imageVector = Icons.Default.Send,
@@ -52,16 +55,7 @@ fun MessageInput(modifier: Modifier = Modifier, onSend: (message: String) -> Uni
     }
 }
 
-enum class User {
-    ADVERSARY,
-    YOU
-}
 
-data class TextMessage(
-    val content: String,
-    val author: User,
-    val createdAt: LocalDateTime = LocalDateTime.now()
-)
 
 @Composable
 fun MessagesItem(message: TextMessage, modifier: Modifier = Modifier) {
@@ -69,10 +63,11 @@ fun MessagesItem(message: TextMessage, modifier: Modifier = Modifier) {
     val author = when (message.author) {
         User.ADVERSARY -> "Adversário"
         User.YOU -> "Você"
+        User.SYSTEM -> "Sistema"
     }
     val backgroundColor = when (message.author) {
         User.YOU -> Color.White
-        User.ADVERSARY -> Color(0xFFFFFFE0)
+        else -> Color(0xFFFFFFE0)
     }
 
     val horizontalAlignment = when (message.author) {
@@ -91,7 +86,7 @@ fun MessagesItem(message: TextMessage, modifier: Modifier = Modifier) {
                     Spacer(Modifier.height(2.dp))
                     Text(message.content)
                 }
-                Text(message.createdAt.format(formatter), fontSize = .7.em)
+                Text(LocalDateTime.ofEpochSecond(message.createdAt, 0, ZoneOffset.UTC).format(formatter), fontSize = .7.em)
             }
         }
     }
@@ -118,10 +113,10 @@ fun MessagesList(messages: List<TextMessage>, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun Chat(messages: List<TextMessage>, modifier: Modifier = Modifier, onSend: (message: String) -> Unit) {
+fun Chat(messages: List<TextMessage>, enabled: Boolean, modifier: Modifier = Modifier, onSend: (message: String) -> Unit) {
     Column(modifier.background(Color.LightGray), verticalArrangement = Arrangement.Bottom) {
         MessagesList(messages, modifier = Modifier.weight(1f))
-        MessageInput(Modifier.padding(20.dp)) {
+        MessageInput(enabled = enabled, Modifier.padding(20.dp)) {
             onSend(it)
         };
     }
