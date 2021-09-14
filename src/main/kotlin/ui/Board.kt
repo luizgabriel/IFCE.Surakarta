@@ -12,8 +12,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerMoveFilter
 import androidx.compose.ui.res.loadImageBitmap
@@ -21,17 +21,13 @@ import androidx.compose.ui.res.useResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import lib.User
+import lib.Player
+import lib.toColor
+import lib.toOther
+import org.jetbrains.skija.ColorFilter
 import kotlin.math.max
 import kotlin.math.min
 
-private fun toColor(user: User): Color {
-    return when (user) {
-        User.YOU -> Color.Blue
-        User.ADVERSARY -> Color.Red
-        else -> Color.Cyan
-    }
-}
 
 private fun isInside(tapPosition: Offset, centerPosition: Offset, radius: Float): Boolean {
     val topLeftPosition = centerPosition - Offset(2f, 2f) * radius
@@ -45,26 +41,35 @@ private fun isInside(tapPosition: Offset, centerPosition: Offset, radius: Float)
 
 @Composable
 fun Board(
-    pieces: Map<Int, User>,
+    pieces: Map<Int, Player>,
+    enabled: Boolean,
+    turnPlayer: Player,
     selectedCell: Int = -1,
-    turnUser: User = User.YOU,
+    adversaryMousePosition: Offset = Offset.Unspecified,
     modifier: Modifier = Modifier,
-    onTapCell: (cell: Int) -> Unit
+    onTapCell: (cell: Int) -> Unit,
+    onCursorMove: (position: Offset) -> Unit
 ) {
     val boardImage = remember {
         useResource("board.png", ::loadImageBitmap)
     }
-    var tapPosition by remember { mutableStateOf(Offset(0f, 0f)) }
-    var cursorPosition by remember { mutableStateOf(Offset(0f, 0f)) }
+    var tapPosition by remember { mutableStateOf(Offset.Zero) }
+    var cursorPosition by remember { mutableStateOf(Offset.Zero) }
+    val alpha = when (enabled) {
+        true -> 1.0f
+        false -> .5f
+    }
 
     Canvas(
         modifier = modifier
             .fillMaxSize()
             .padding(20.dp)
+            .graphicsLayer(alpha = alpha)
             .clipToBounds()
             .pointerMoveFilter(
                 onMove = {
                     cursorPosition = it
+                    onCursorMove(cursorPosition)
                     true
                 }
             )
@@ -93,22 +98,21 @@ fun Board(
             val cellRadius = boardSize.x * .03f
             val cellSpacing = boardSize * .112f
 
-            if (selectedCell >= 0) {
-                println("selectedCell: %d, cursorPosition: %s".format(selectedCell, cursorPosition))
-                drawCircle(color = toColor(turnUser), cellRadius, center = cursorPosition)
+            if (selectedCell >= 0 && enabled) {
+                drawCircle(color = turnPlayer.toColor(), cellRadius, center = cursorPosition)
             }
 
             for (i in 0 until 36) {
                 val piece = pieces[i]
                 val cell = Offset((i % 6).toFloat(), (i / 6).toFloat())
                 val centerPosition = firstPositionOffset + Offset(cell.x * cellSpacing.x, cell.y * cellSpacing.y)
-                if (isInside(tapPosition, centerPosition, cellRadius)) {
-                    tapPosition = Offset(0f, 0f)
+                if (enabled && isInside(tapPosition, centerPosition, cellRadius)) {
+                    tapPosition = Offset.Zero
                     onTapCell(i)
                 }
 
                 if (piece != null && i != selectedCell)
-                    drawCircle(color = toColor(piece), radius = cellRadius, center = centerPosition)
+                    drawCircle(color = piece.toColor(), radius = cellRadius, center = centerPosition)
             }
         }
     }

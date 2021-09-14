@@ -56,7 +56,6 @@ fun MessageInput(enabled: Boolean, modifier: Modifier = Modifier, onSend: (messa
 }
 
 
-
 @Composable
 fun MessagesItem(message: TextMessage, modifier: Modifier = Modifier) {
     val formatter = remember { DateTimeFormatter.ofPattern("HH:mm") }
