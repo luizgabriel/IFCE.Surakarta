@@ -10,6 +10,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
 import kotlinx.coroutines.*
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import ui.Board
 import ui.Chat
 import ui.EditConnectionInput
@@ -22,39 +24,39 @@ import lib.*
 @Composable
 @Preview
 fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
-    var selectedPiece by remember { mutableStateOf(-1) }
+    var selectedCell by remember { mutableStateOf(-1) }
     var turnPlayer by remember { mutableStateOf(Player.BLUE) }
     var yourPlayer by remember { mutableStateOf(Player.BLUE) }
     var adversaryMousePosition by remember { mutableStateOf(Offset(0f, 0f)) }
     val messages = remember { mutableStateListOf<TextMessage>() }
-    val serverSocket by remember { mutableStateOf(ServerSocket(serverPort)) }
-    var adversarySocket by remember { mutableStateOf<Optional<Socket>>(Optional.empty()) }
+    var adversarySocket by remember { mutableStateOf<Socket?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val boardPieces = remember { mutableStateMapOf<Int, Player>() }
+    var winner by remember { mutableStateOf<Player?>(null) }
 
     val onSelectCell = { cell: Int ->
-        if (!boardPieces.contains(cell) && selectedPiece >= 0) {
+        if (!boardPieces.contains(cell) && selectedCell >= 0) {
             boardPieces[cell] = yourPlayer
-            selectedPiece = -1
-        } else if (boardPieces[cell] == yourPlayer && selectedPiece == -1) {
+            selectedCell = -1
+        } else if (boardPieces[cell] == yourPlayer && selectedCell == -1) {
             boardPieces.remove(cell)
-            selectedPiece = cell
-        } else if (boardPieces[cell] == yourPlayer.toOther() && selectedPiece >= 0) {
+            selectedCell = cell
+        } else if (boardPieces[cell] == yourPlayer.toOther() && selectedCell >= 0) {
             boardPieces[cell] = yourPlayer
-            selectedPiece = -1
+            selectedCell = -1
         }
+    }
 
-        adversarySocket.ifPresent {
-            it.sendJsonMessage(SocketMessage.ofChangeBoard(boardPieces))
-        }
+    val resetBoard = {
+        boardPieces.clear()
+        boardPieces.putAll(createDefaultSurakartaBoard())
     }
 
     val onReceiveMessage = { message: SocketMessage ->
         when (message.type) {
             SocketMessageType.SURRENDER -> {
                 messages.add(TextMessage.ofAdversarySurrender())
-                boardPieces.clear()
-                boardPieces.putAll(createDefaultSurakartaBoard())
+                resetBoard()
             }
             SocketMessageType.TEXT -> messages.add(TextMessage(message.data, author = User.ADVERSARY))
             SocketMessageType.MOVE_MOUSE -> {
@@ -66,9 +68,14 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
             SocketMessageType.CHANGE_BOARD -> {
                 boardPieces.clear()
                 boardPieces.putAll(message.board)
+                winner = findWinner(boardPieces)
             }
             SocketMessageType.SELECTED_CELL -> {
-                selectedPiece = message.cell
+                selectedCell = message.cell
+            }
+            SocketMessageType.FINISH_GAME -> {
+                messages.add(TextMessage.ofAdversaryReset())
+                resetBoard()
             }
         }
         Unit
@@ -77,9 +84,9 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
     val onConnect = { player: Player, socket: Socket ->
         val connection = socket.toConnection()
         coroutineScope.launch(Dispatchers.Main) {
-            messages.add(TextMessage.ofConnectedTo(connection))
-            adversarySocket = Optional.of(socket)
+            adversarySocket = socket
             yourPlayer = player
+            messages.add(TextMessage.ofConnectedTo(connection))
             boardPieces.clear()
             boardPieces.putAll(createDefaultSurakartaBoard())
         }
@@ -96,9 +103,7 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
 
     val sendMessageToSocket = { message: SocketMessage ->
         coroutineScope.launch(Dispatchers.IO) {
-            adversarySocket.ifPresent {
-                it.sendJsonMessage(message)
-            }
+            adversarySocket?.sendJsonMessage(message)
         }
         Unit
     }
@@ -110,14 +115,10 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
     }
 
     val onCursorMove = { position: Offset ->
-        sendMessageToSocket(SocketMessage.ofMouseMovement(position))
-    }
-
-    val onSurrender = {
-        messages.add(TextMessage.ofSurrender())
-        sendMessageToSocket(SocketMessage.ofSurrender())
-        boardPieces.clear()
-        boardPieces.putAll(createDefaultSurakartaBoard())
+        coroutineScope.launch {
+            sendMessageToSocket(SocketMessage.ofMouseMovement(position))
+        }
+        Unit
     }
 
     val onFinishTurn = {
@@ -125,17 +126,48 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
         sendMessageToSocket(SocketMessage.ofFinishTurn())
     }
 
-    LaunchedEffect(Unit) {
-        coroutineScope.launch(Dispatchers.IO) {
-            serverSocket.connectionPool {
-                onConnect(Player.RED, it)
-            }
+    val onSurrender = {
+        if (winner == null) {
+            messages.add(TextMessage.ofSurrender())
+            sendMessageToSocket(SocketMessage.ofSurrender())
+            onFinishTurn()
+        } else {
+            messages.add(TextMessage.ofReset())
+            sendMessageToSocket(SocketMessage.ofFinishGame())
+        }
+
+        boardPieces.clear()
+        boardPieces.putAll(createDefaultSurakartaBoard())
+    }
+
+
+    LaunchedEffect(serverPort) {
+        messages.add(TextMessage.ofAcceptingConnections(serverPort))
+    }
+
+    awaitForConnection(serverPort) {
+        onConnect(Player.RED, it)
+    }
+
+    LaunchedEffect(selectedCell) {
+        adversarySocket?.sendJsonMessage(SocketMessage.ofSelectedCell(selectedCell))
+    }
+
+    LaunchedEffect(Json.encodeToString<Map<Int, Player>>(boardPieces)) {
+        adversarySocket?.sendJsonMessage(SocketMessage.ofChangeBoard(boardPieces))
+    }
+
+    LaunchedEffect(winner) {
+        if (winner == yourPlayer) {
+            messages.add(TextMessage.ofVictory())
+        } else if (winner == yourPlayer.toOther()) {
+            messages.add(TextMessage.ofLost())
         }
     }
 
-    val isConnected = adversarySocket.map { it.isConnected }.orElse(false)
-    val adversaryConnection = adversarySocket.map { it.toConnection() }
-    val enabledBoard = turnPlayer == yourPlayer && isConnected;
+    val isConnected = adversarySocket != null && adversarySocket!!.isConnected
+    val adversaryConnection = adversarySocket?.toConnection()
+    val enabledBoard = turnPlayer == yourPlayer && isConnected && winner == null
 
     DesktopMaterialTheme {
         Row {
@@ -145,7 +177,7 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
                 }
                 Board(
                     pieces = boardPieces,
-                    selectedCell = selectedPiece,
+                    selectedCell = selectedCell,
                     turnPlayer = turnPlayer,
                     adversaryMousePosition = adversaryMousePosition,
                     enabled = enabledBoard,
@@ -156,11 +188,12 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
             }
             Column(modifier = Modifier.weight(4 / 12.0f)) {
                 EditConnectionInput(
-                    port = serverSocket.localPort,
+                    port = serverPort,
                     adversary = adversaryConnection,
                     isConnected = isConnected,
                     onConnect = onConnectToAdversary,
                     onSurrender = onSurrender,
+                    winner = winner,
                     modifier = Modifier.height(80.dp)
                 )
                 Chat(messages, enabled = isConnected, onSend = onSendMessage)

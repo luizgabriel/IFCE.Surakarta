@@ -1,5 +1,7 @@
 package lib
 
+import androidx.compose.runtime.MutableState
+import androidx.compose.ui.geometry.Offset
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -42,14 +44,6 @@ fun createDefaultSurakartaBoard(): Map<Int, Player> {
     )
 }
 
-data class Connection (
-    val host: String,
-    val port: Int
-) {
-    override fun toString(): String {
-        return "%s:%d".format(host, port)
-    }
-}
 
 fun parseConnectionString(connection: String, defaultPort: Int = Random.nextInt(8001, 8100)): Result<Connection> {
     val parts = connection.split(':');
@@ -64,21 +58,33 @@ fun parseConnectionString(connection: String, defaultPort: Int = Random.nextInt(
 
 fun Socket.toConnection() = Connection(this.inetAddress.hostAddress, this.port)
 
-inline fun <reified T> Socket.sendJsonMessage(value : T) {
+fun findWinner(board: Map<Int, Player>): Player? {
+    var countBlue = 0
+    var countRed = 0
+
+    for ((pos, player) in board) {
+        when (player) {
+            Player.RED -> countRed++
+            Player.BLUE -> countBlue++
+        }
+    }
+
+    return if (countBlue == 0)
+        Player.RED
+    else if (countRed == 0)
+        Player.BLUE
+    else
+        null
+}
+
+inline fun <reified T> Socket.sendJsonMessage(value: T) {
     val writer = PrintWriter(this.outputStream, true)
     writer.println(Json.encodeToString(value))
 }
 
-inline fun <reified T> Socket.jsonMessagePool(callback : (message: T) -> Unit) {
-    val writer = PrintWriter(this.outputStream, true)
-    val reader = BufferedReader(InputStreamReader(this.inputStream))
-    while (true) {
-        callback(Json.decodeFromString<T>(reader.readLine()))
-    }
-}
-
-inline fun ServerSocket.connectionPool(callback : (socket: Socket) -> Unit) {
-    while (true) {
-        callback(this.accept())
+inline fun <reified T> Socket.jsonMessagePool(callback: (message: T) -> Unit) {
+    val reader = Scanner(this.inputStream)
+    while (reader.hasNextLine()) {
+        callback(Json.decodeFromString<T>(reader.nextLine()))
     }
 }
