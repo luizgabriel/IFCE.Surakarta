@@ -1,4 +1,4 @@
-package ui
+package br.edu.ifce.surakarta.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -20,8 +20,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import lib.Player
 import lib.toColor
-import lib.toOther
-import org.jetbrains.skija.ColorFilter
 import kotlin.math.max
 import kotlin.math.min
 

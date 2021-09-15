@@ -1,17 +1,6 @@
 package lib
 
-import androidx.compose.runtime.MutableState
-import androidx.compose.ui.geometry.Offset
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.PrintWriter
-import java.lang.Error
-import java.net.ServerSocket
 import java.net.Socket
-import java.util.*
 import kotlin.random.Random
 
 fun createDefaultSurakartaBoard(): Map<Int, Player> {
@@ -60,7 +49,7 @@ fun findWinner(board: Map<Int, Player>): Player? {
     var countBlue = 0
     var countRed = 0
 
-    for ((pos, player) in board) {
+    for ((_, player) in board) {
         when (player) {
             Player.RED -> countRed++
             Player.BLUE -> countBlue++

@@ -8,19 +8,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.*
-import kotlinx.coroutines.*
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPosition
+import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import ui.Board
-import ui.Chat
-import ui.EditConnectionInput
-import java.net.ServerSocket
-import java.net.Socket
-import java.util.*
-import kotlin.random.Random
 import lib.*
+import br.edu.ifce.surakarta.ui.*
+import java.net.Socket
+import kotlin.random.Random
 
 @Composable
 @Preview
@@ -113,9 +112,8 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
     }
 
     val onCursorMove = { position: Offset ->
-        coroutineScope.launch {
+        if (turnPlayer == yourPlayer)
             sendMessageToSocket(SocketMessage.ofMouseMovement(position))
-        }
         Unit
     }
 
