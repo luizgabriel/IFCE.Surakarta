@@ -2,6 +2,8 @@
 
 Implementar o Jogo Surakarta com Sockets
 
+![image](https://user-images.githubusercontent.com/7469145/133461769-5344ca77-120e-40e7-9abd-f9dfa1701ce0.png)
+
 ### Objetivo do jogo
 Completar o percurso em primeiro lugar.
 
