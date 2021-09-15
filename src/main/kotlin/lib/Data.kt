@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import java.time.LocalDateTime
 import kotlinx.serialization.*
+import kotlinx.serialization.json.Json
 import java.time.ZoneOffset
 
 enum class User {
@@ -86,3 +87,5 @@ fun Player.toOther(): Player {
         Player.RED -> Player.BLUE
     }
 }
+
+inline fun <reified T> T.toJson() = Json.encodeToString(this)

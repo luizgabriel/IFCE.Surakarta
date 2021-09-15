@@ -10,6 +10,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.*
 import kotlinx.coroutines.*
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import ui.Board
@@ -58,6 +59,10 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
                 messages.add(TextMessage.ofAdversarySurrender())
                 resetBoard()
             }
+            SocketMessageType.FINISH_GAME -> {
+                messages.add(TextMessage.ofAdversaryReset())
+                resetBoard()
+            }
             SocketMessageType.TEXT -> messages.add(TextMessage(message.data, author = User.ADVERSARY))
             SocketMessageType.MOVE_MOUSE -> {
                 adversaryMousePosition = Offset(message.position.first, message.position.second)
@@ -73,24 +78,19 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
             SocketMessageType.SELECTED_CELL -> {
                 selectedCell = message.cell
             }
-            SocketMessageType.FINISH_GAME -> {
-                messages.add(TextMessage.ofAdversaryReset())
-                resetBoard()
-            }
         }
         Unit
     }
 
     val onConnect = { player: Player, socket: Socket ->
         val connection = socket.toConnection()
-        coroutineScope.launch(Dispatchers.Main) {
-            adversarySocket = socket
-            yourPlayer = player
-            messages.add(TextMessage.ofConnectedTo(connection))
-            boardPieces.clear()
-            boardPieces.putAll(createDefaultSurakartaBoard())
-        }
-        socket.jsonMessagePool(onReceiveMessage)
+        adversarySocket = socket
+        yourPlayer = player
+        messages.add(TextMessage.ofConnectedTo(connection))
+        boardPieces.clear()
+        boardPieces.putAll(createDefaultSurakartaBoard())
+
+        socket.messagePool { onReceiveMessage(Json.decodeFromString(it)) }
     }
 
     val onConnectToAdversary = { adversaryHost: Connection ->
@@ -102,16 +102,14 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
     }
 
     val sendMessageToSocket = { message: SocketMessage ->
-        coroutineScope.launch(Dispatchers.IO) {
-            adversarySocket?.sendJsonMessage(message)
-        }
-        Unit
+        adversarySocket?.sendMessage(message.toJson())
     }
 
     val onSendMessage = { text: String ->
         val message = TextMessage(text, User.YOU)
         messages.add(message)
         sendMessageToSocket(SocketMessage.ofText(text))
+        Unit
     }
 
     val onCursorMove = { position: Offset ->
@@ -124,6 +122,7 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
     val onFinishTurn = {
         turnPlayer = turnPlayer.toOther()
         sendMessageToSocket(SocketMessage.ofFinishTurn())
+        Unit
     }
 
     val onSurrender = {
@@ -140,7 +139,6 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
         boardPieces.putAll(createDefaultSurakartaBoard())
     }
 
-
     LaunchedEffect(serverPort) {
         messages.add(TextMessage.ofAcceptingConnections(serverPort))
     }
@@ -150,11 +148,11 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
     }
 
     LaunchedEffect(selectedCell) {
-        adversarySocket?.sendJsonMessage(SocketMessage.ofSelectedCell(selectedCell))
+        sendMessageToSocket(SocketMessage.ofSelectedCell(selectedCell))
     }
 
-    LaunchedEffect(Json.encodeToString<Map<Int, Player>>(boardPieces)) {
-        adversarySocket?.sendJsonMessage(SocketMessage.ofChangeBoard(boardPieces))
+    LaunchedEffect(boardPieces.toJson<Map<Int, Player>>()) {
+        sendMessageToSocket(SocketMessage.ofChangeBoard(boardPieces))
     }
 
     LaunchedEffect(winner) {
@@ -203,10 +201,7 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
 }
 
 fun main() = application {
-    val windowState = WindowState(
-        position = WindowPosition.Aligned(Alignment.Center),
-        size = WindowSize(1280.dp, 720.dp),
-    )
+    val windowState = rememberWindowState(position = WindowPosition.Aligned(Alignment.Center), width = 1280.dp, height = 720.dp)
 
     Window(
         title = "Surakarta",

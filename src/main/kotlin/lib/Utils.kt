@@ -56,8 +56,6 @@ fun parseConnectionString(connection: String, defaultPort: Int = Random.nextInt(
     }
 }
 
-fun Socket.toConnection() = Connection(this.inetAddress.hostAddress, this.port)
-
 fun findWinner(board: Map<Int, Player>): Player? {
     var countBlue = 0
     var countRed = 0
@@ -77,14 +75,4 @@ fun findWinner(board: Map<Int, Player>): Player? {
         null
 }
 
-inline fun <reified T> Socket.sendJsonMessage(value: T) {
-    val writer = PrintWriter(this.outputStream, true)
-    writer.println(Json.encodeToString(value))
-}
-
-inline fun <reified T> Socket.jsonMessagePool(callback: (message: T) -> Unit) {
-    val reader = Scanner(this.inputStream)
-    while (reader.hasNextLine()) {
-        callback(Json.decodeFromString<T>(reader.nextLine()))
-    }
-}
+fun Socket.toConnection() = Connection(this.inetAddress.hostAddress, this.port)
