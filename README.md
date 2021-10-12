@@ -2,7 +2,7 @@
 
 Implementar o Jogo Surakarta com Sockets
 
-> Implementação com [Java RMI](https://github.com/luizgabriel/IFCE.Surakarta/tree/java-rmi)
+> Implementação com [RMI](https://github.com/luizgabriel/IFCE.Surakarta/tree/java-rmi) na branch [java-rmi](https://github.com/luizgabriel/IFCE.Surakarta/tree/java-rmi)
 
 ![image](https://user-images.githubusercontent.com/7469145/133461769-5344ca77-120e-40e7-9abd-f9dfa1701ce0.png)
 
