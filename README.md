@@ -1,6 +1,6 @@
 # Surakarta
 
-Implementar o Jogo Surakarta com Sockets
+Implementar o Jogo Surakarta com **RMI**
 
 ![image](https://user-images.githubusercontent.com/7469145/133461769-5344ca77-120e-40e7-9abd-f9dfa1701ce0.png)
 
