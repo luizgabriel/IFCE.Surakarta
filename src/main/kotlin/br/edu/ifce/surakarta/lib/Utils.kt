@@ -1,5 +1,10 @@
 package lib
 
+import br.edu.ifce.surakarta.Connection
+import br.edu.ifce.surakarta.Player
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.net.Socket
 import kotlin.random.Random
 
@@ -63,5 +68,3 @@ fun findWinner(board: Map<Int, Player>): Player? {
     else
         null
 }
-
-fun Socket.toConnection() = Connection(this.inetAddress.hostAddress, this.port)

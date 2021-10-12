@@ -18,8 +18,8 @@ import androidx.compose.ui.res.useResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import lib.Player
-import lib.toColor
+import br.edu.ifce.surakarta.Player
+import br.edu.ifce.surakarta.toColor
 import kotlin.math.max
 import kotlin.math.min
 

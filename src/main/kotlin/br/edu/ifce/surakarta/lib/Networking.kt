@@ -1,39 +1,43 @@
-package lib
+package br.edu.ifce.surakarta.lib
 
-import androidx.compose.runtime.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import java.io.PrintWriter
-import java.net.ServerSocket
-import java.net.Socket
-import java.util.*
+import br.edu.ifce.surakarta.Connection
+import br.edu.ifce.surakarta.Player
+import java.rmi.Remote
+import java.rmi.RemoteException
+import java.rmi.registry.LocateRegistry
 
-@Composable
-fun awaitForConnection(port: Int, onConnection: (socket: Socket) -> Unit) {
-    val socketServer by remember(port) { mutableStateOf(ServerSocket(port)) }
-    val coroutineScope = rememberCoroutineScope()
+interface ISurakartaPlayer : Remote {
 
-    DisposableEffect(socketServer) {
-        coroutineScope.launch(Dispatchers.IO) {
-            while (true) {
-                onConnection(socketServer.accept())
-            }
-        }
+    @Throws(RemoteException::class)
+    fun start(host: String, port: Int)
 
-        onDispose {
-            socketServer.close()
-        }
-    }
+    @Throws(RemoteException::class)
+    fun sendMessage(text: String)
+
+    @Throws(RemoteException::class)
+    fun moveMouse(positionX: Float, positionY: Float)
+
+    @Throws(RemoteException::class)
+    fun changeBoard(board: HashMap<Int, Player>)
+
+    @Throws(RemoteException::class)
+    fun selectCell(cell: Int)
+
+    @Throws(RemoteException::class)
+    fun changeTurn()
+
+    @Throws(RemoteException::class)
+    fun finishGame()
+
+    @Throws(RemoteException::class)
+    fun surrender()
+
 }
 
-fun Socket.sendMessage(value: String) {
-    val writer = PrintWriter(this.outputStream, true)
-    writer.println(value)
+fun findSurakartaPlayer(connection: Connection) : ISurakartaPlayer {
+    return LocateRegistry.getRegistry(connection.host, connection.port).lookup("SurakartaPlayer") as ISurakartaPlayer
 }
 
-inline fun Socket.messagePool(callback: (message: String) -> Unit) {
-    val reader = Scanner(this.inputStream)
-    while (reader.hasNextLine()) {
-        callback(reader.nextLine())
-    }
+fun exportSurakartaPlayer(port: Int, player: ISurakartaPlayer) {
+    LocateRegistry.createRegistry(port).bind("SurakartaPlayer", player)
 }

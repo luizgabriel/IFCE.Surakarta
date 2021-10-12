@@ -12,13 +12,17 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
+import br.edu.ifce.surakarta.*
+import br.edu.ifce.surakarta.lib.ISurakartaPlayer
+import br.edu.ifce.surakarta.lib.exportSurakartaPlayer
+import br.edu.ifce.surakarta.lib.findSurakartaPlayer
 import lib.*
 import br.edu.ifce.surakarta.ui.*
-import java.net.Socket
+import java.lang.Exception
+import java.net.InetAddress
+import java.rmi.RemoteException
+import java.rmi.registry.LocateRegistry
+import java.rmi.server.UnicastRemoteObject
 import kotlin.random.Random
 
 @Composable
@@ -29,10 +33,68 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
     var yourPlayer by remember { mutableStateOf(Player.BLUE) }
     var adversaryMousePosition by remember { mutableStateOf(Offset(0f, 0f)) }
     val messages = remember { mutableStateListOf<TextMessage>() }
-    var adversarySocket by remember { mutableStateOf<Socket?>(null) }
-    val coroutineScope = rememberCoroutineScope()
     val boardPieces = remember { mutableStateMapOf<Int, Player>() }
     var winner by remember { mutableStateOf<Player?>(null) }
+    var adversaryConnection by remember { mutableStateOf<Connection?>(null) }
+
+    var adversary by remember { mutableStateOf<ISurakartaPlayer?>(null) }
+
+    val resetBoard = {
+        boardPieces.clear()
+        boardPieces.putAll(createDefaultSurakartaBoard())
+    }
+
+    val disconnect = { e: Exception ->
+        e.printStackTrace();
+        messages.add(TextMessage.ofError(e.message))
+        adversary = null
+        adversaryConnection = null
+    }
+
+    LaunchedEffect(serverPort) {
+        exportSurakartaPlayer(serverPort, object : UnicastRemoteObject(), ISurakartaPlayer {
+
+            override fun start(host: String, port: Int) {
+                yourPlayer = Player.RED
+                adversaryConnection = Connection(host, port)
+                adversary = findSurakartaPlayer(adversaryConnection!!);
+                messages.add(TextMessage.ofConnectedTo(adversaryConnection!!))
+                resetBoard()
+            }
+
+            override fun sendMessage(text: String) {
+                messages.add(TextMessage(text, author = User.ADVERSARY))
+            }
+
+            override fun moveMouse(positionX: Float, positionY: Float) {
+                adversaryMousePosition = Offset(positionX, positionY)
+            }
+
+            override fun changeBoard(board: HashMap<Int, Player>) {
+                boardPieces.clear()
+                boardPieces.putAll(board)
+                winner = findWinner(boardPieces)
+            }
+
+            override fun selectCell(cell: Int) {
+                selectedCell = cell
+            }
+
+            override fun changeTurn() {
+                turnPlayer = turnPlayer.toOther()
+            }
+
+            override fun finishGame() {
+                messages.add(TextMessage.ofAdversaryReset())
+                resetBoard()
+            }
+
+            override fun surrender() {
+                messages.add(TextMessage.ofAdversarySurrender())
+                resetBoard()
+            }
+        })
+    }
 
     val onSelectCell = { cell: Int ->
         if (!boardPieces.contains(cell) && selectedCell >= 0) {
@@ -45,112 +107,77 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
             boardPieces[cell] = yourPlayer
             selectedCell = -1
         }
-    }
 
-    val resetBoard = {
-        boardPieces.clear()
-        boardPieces.putAll(createDefaultSurakartaBoard())
-    }
+        winner = findWinner(boardPieces)
 
-    val onReceiveMessage = { message: SocketMessage ->
-        when (message.type) {
-            SocketMessageType.SURRENDER -> {
-                messages.add(TextMessage.ofAdversarySurrender())
-                resetBoard()
-            }
-            SocketMessageType.FINISH_GAME -> {
-                messages.add(TextMessage.ofAdversaryReset())
-                resetBoard()
-            }
-            SocketMessageType.TEXT -> messages.add(TextMessage(message.data, author = User.ADVERSARY))
-            SocketMessageType.MOVE_MOUSE -> {
-                adversaryMousePosition = Offset(message.position.first, message.position.second)
-            }
-            SocketMessageType.CHANGE_TURN -> {
-                turnPlayer = turnPlayer.toOther()
-            }
-            SocketMessageType.CHANGE_BOARD -> {
-                boardPieces.clear()
-                boardPieces.putAll(message.board)
-                winner = findWinner(boardPieces)
-            }
-            SocketMessageType.SELECTED_CELL -> {
-                selectedCell = message.cell
-            }
+        try {
+            adversary?.selectCell(selectedCell)
+            adversary?.changeBoard(HashMap(boardPieces))
+        } catch (e: Exception) {
+            disconnect(e);
         }
+
         Unit
-    }
-
-    val onConnect = { player: Player, socket: Socket ->
-        val connection = socket.toConnection()
-        adversarySocket = socket
-        yourPlayer = player
-        messages.add(TextMessage.ofConnectedTo(connection))
-        boardPieces.clear()
-        boardPieces.putAll(createDefaultSurakartaBoard())
-
-        socket.messagePool { onReceiveMessage(Json.decodeFromString(it)) }
     }
 
     val onConnectToAdversary = { adversaryHost: Connection ->
-        coroutineScope.launch(Dispatchers.IO) {
-            val socket = Socket(adversaryHost.host, adversaryHost.port)
-            onConnect(Player.BLUE, socket)
+        yourPlayer = Player.BLUE
+        adversaryConnection = adversaryHost
+
+        try {
+            val registry = LocateRegistry.getRegistry(adversaryHost.host, adversaryHost.port)
+            adversary = registry.lookup("SurakartaPlayer") as ISurakartaPlayer;
+            adversary?.start(InetAddress.getLocalHost().hostAddress, serverPort)
+            resetBoard()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            adversaryConnection = null
         }
+
         Unit
     }
 
-    val sendMessageToSocket = { message: SocketMessage ->
-        adversarySocket?.sendMessage(message.toJson())
-    }
-
     val onSendMessage = { text: String ->
-        val message = TextMessage(text, User.YOU)
-        messages.add(message)
-        sendMessageToSocket(SocketMessage.ofText(text))
+        messages.add(TextMessage(text, User.YOU))
+        adversary?.sendMessage(text)
         Unit
     }
 
     val onCursorMove = { position: Offset ->
         if (turnPlayer == yourPlayer)
-            sendMessageToSocket(SocketMessage.ofMouseMovement(position))
+            adversary?.moveMouse(position.x, position.y)
         Unit
     }
 
     val onFinishTurn = {
         turnPlayer = turnPlayer.toOther()
-        sendMessageToSocket(SocketMessage.ofFinishTurn())
+        try {
+            adversary?.changeTurn()
+        } catch (e: Exception) {
+            disconnect(e)
+        }
         Unit
     }
 
     val onSurrender = {
-        if (winner == null) {
-            messages.add(TextMessage.ofSurrender())
-            sendMessageToSocket(SocketMessage.ofSurrender())
-            onFinishTurn()
-        } else {
-            messages.add(TextMessage.ofReset())
-            sendMessageToSocket(SocketMessage.ofFinishGame())
+        try {
+            if (winner == null) {
+                messages.add(TextMessage.ofSurrender())
+                adversary?.surrender()
+                onFinishTurn()
+            } else {
+                messages.add(TextMessage.ofReset())
+                adversary?.finishGame()
+            }
+        } catch (e: Exception) {
+            disconnect(e);
         }
 
-        boardPieces.clear()
-        boardPieces.putAll(createDefaultSurakartaBoard())
+        resetBoard()
     }
 
     LaunchedEffect(serverPort) {
         messages.add(TextMessage.ofAcceptingConnections(serverPort))
-    }
-
-    awaitForConnection(serverPort) {
-        onConnect(Player.RED, it)
-    }
-
-    LaunchedEffect(selectedCell) {
-        sendMessageToSocket(SocketMessage.ofSelectedCell(selectedCell))
-    }
-
-    LaunchedEffect(boardPieces.toJson<Map<Int, Player>>()) {
-        sendMessageToSocket(SocketMessage.ofChangeBoard(boardPieces))
     }
 
     LaunchedEffect(winner) {
@@ -161,8 +188,7 @@ fun App(serverPort: Int = Random.nextInt(8000, 8100)) {
         }
     }
 
-    val isConnected = adversarySocket != null && adversarySocket!!.isConnected
-    val adversaryConnection = adversarySocket?.toConnection()
+    val isConnected = adversary != null
     val enabledBoard = turnPlayer == yourPlayer && isConnected && winner == null
 
     DesktopMaterialTheme {

@@ -1,10 +1,8 @@
-package lib
+package br.edu.ifce.surakarta
 
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import java.rmi.server.UnicastRemoteObject
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 
@@ -34,44 +32,17 @@ data class TextMessage(
         fun ofAcceptingConnections(port: Int) = TextMessage("Aceitando conexões na porta %d".format(port), User.SYSTEM)
         fun ofReset() = TextMessage("O jogo foi reiniciado!", User.SYSTEM)
         fun ofAdversaryReset() =  TextMessage("Seu adversário reiniciou a partida.", User.SYSTEM)
+        fun ofError(message: String?) = TextMessage("Ocorrey um erro: $message", User.SYSTEM)
     }
-}
-
-data class Connection (
-    val host: String,
-    val port: Int
-) {
-    override fun toString(): String {
-        return "%s:%d".format(host, port)
-    }
-}
-
-enum class SocketMessageType {
-    TEXT,
-    FINISH_GAME,
-    SURRENDER,
-    MOVE_MOUSE,
-    CHANGE_BOARD,
-    SELECTED_CELL,
-    CHANGE_TURN
 }
 
 @Serializable
-data class SocketMessage(
-    val type: SocketMessageType,
-    val data: String = "",
-    val position: Pair<Float, Float> = 0f to 0f,
-    val board: Map<Int, Player> = mapOf(),
-    val cell: Int = -1,
-) {
-    companion object {
-        fun ofText(message: String) = SocketMessage(type = SocketMessageType.TEXT, data = message)
-        fun ofSurrender() = SocketMessage(type = SocketMessageType.SURRENDER)
-        fun ofFinishGame() = SocketMessage(type = SocketMessageType.FINISH_GAME)
-        fun ofMouseMovement(position: Offset) = SocketMessage(type = SocketMessageType.MOVE_MOUSE, position = position.x to position.y)
-        fun ofChangeBoard(board: Map<Int, Player>) = SocketMessage(type = SocketMessageType.CHANGE_BOARD, board = board)
-        fun ofSelectedCell(cell: Int) = SocketMessage(type = SocketMessageType.SELECTED_CELL, cell = cell)
-        fun ofFinishTurn() = SocketMessage(type = SocketMessageType.CHANGE_TURN)
+data class Connection (
+    val host: String,
+    val port: Int
+): UnicastRemoteObject() {
+    override fun toString(): String {
+        return "%s:%d".format(host, port)
     }
 }
 
@@ -88,5 +59,3 @@ fun Player.toOther(): Player {
         Player.RED -> Player.BLUE
     }
 }
-
-inline fun <reified T> T.toJson() = Json.encodeToString(this)
